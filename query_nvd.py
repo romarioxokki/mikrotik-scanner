@@ -61,17 +61,18 @@ class CVEsInterface():
 
     def get_cves(self, product, vendor, resultsPerPage, cur_index):
         total_results = 0
-        response = self._web_api_query("https://services.nvd.nist.gov/rest/json/cves/1.0?",
-                                       params={"keyword": product, "resultsPerPage": resultsPerPage,
+        response = self._web_api_query("https://services.nvd.nist.gov/rest/json/cves/2.0?",
+                                       params={"keywordSearch": product, "resultsPerPage": resultsPerPage,
                                                "startIndex": cur_index})
         if response:
-            self._convert_to_ranges(response["result"]["CVE_Items"], vendor, product)
+            self._convert_to_ranges(response["vulnerabilities"], vendor, product)
             total_results = response["totalResults"]
         return total_results
 
     def _convert_to_ranges(self, all_cves_data, vendor, product):
         for cve_data in all_cves_data:
-            cve = cve_data["cve"]['CVE_data_meta']['ID']
+            cve_data = cve_data["cve"] 
+            cve = cve_data['id']
 
             if cve in self._ver_cves.keys():
                 continue
@@ -79,18 +80,18 @@ class CVEsInterface():
             if 'configurations' not in cve_data:
                 print (f'ERROR: No configurations {cve}', file = sys.stderr)
             else:
-                if 'nodes' not in cve_data['configurations']:
+                if 'nodes' not in cve_data['configurations'][0]:
                     print (f'ERROR: No nodes {cve}', file = sys.stderr)
                 else:
                     versions = []
-                    for node in cve_data['configurations']['nodes']:
+                    for node in cve_data['configurations'][0]['nodes']:
                         if node['operator'] != 'OR':
                             print(f'DEBUG: No handling for OR operator in node, the following CVE needs to be implemented: {cve}', file=sys.stderr)
                         else:
-                            for cpe_match in node['cpe_match']:
+                            for cpe_match in node['cpeMatch']:
                                 cpe_res = hashabledict()
-                                if 'cpe23Uri' in cpe_match:
-                                    if not f'{vendor}:{product}' in cpe_match['cpe23Uri']:
+                                if 'criteria' in cpe_match:
+                                    if not f'{vendor}:{product}' in cpe_match['criteria']:
                                         continue
 
                                 if 'versionStartIncluding' in cpe_match:
@@ -102,8 +103,8 @@ class CVEsInterface():
                                 if 'versionEndExcluding' in cpe_match:
                                     cpe_res['end_excluding'] = cpe_match['versionEndExcluding']
 
-                                if 'cpe23Uri' in cpe_match:
-                                    exact_ver = cpe_match['cpe23Uri'].partition(f'cpe:2.3:o:{vendor}:{product}:')[2].partition(':')[0]
+                                if 'criteria' in cpe_match:
+                                    exact_ver = cpe_match['criteria'].partition(f'cpe:2.3:o:{vendor}:{product}:')[2].partition(':')[0]
                                     if exact_ver not in (['*', '']):
                                         cpe_res['exact'] = exact_ver
 
@@ -111,6 +112,5 @@ class CVEsInterface():
                                     versions.append(cpe_res)
                     if versions:
                         self._ver_cves[cve] = list(set(versions))
-
 
 
